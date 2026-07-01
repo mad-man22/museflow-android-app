@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -12,7 +13,11 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.museflow.mobile"
+      "package": "com.museflow.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#121212"
+      }
     },
     "extra": {
       "eas": {
