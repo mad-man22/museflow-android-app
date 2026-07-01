@@ -13,6 +13,11 @@
     },
     "android": {
       "package": "com.museflow.mobile"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "545542dd-834a-461d-a517-f09d49f2b671"
+      }
     }
   }
 }
