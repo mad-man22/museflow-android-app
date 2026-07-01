@@ -1,22 +1,50 @@
-# 🎵 MuseFlow
+<div align="center">
 
-A premium, feature-rich music streaming app for Android built with **React Native** and **Expo**, powered by YouTube Music. MuseFlow delivers a beautiful dark-themed UI with smooth animations, real-time lyrics, and an intelligent auto-playing queue.
+<img src="https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" />
+<img src="https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white" />
+<img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
+<img src="https://img.shields.io/badge/Zustand-FF6B35?style=for-the-badge&logo=react&logoColor=white" />
+<img src="https://img.shields.io/badge/YouTube_Music-FF0000?style=for-the-badge&logo=youtube-music&logoColor=white" />
+
+<br /><br />
+
+<h1>🎵 MuseFlow</h1>
+
+<p><strong>A premium, feature-rich music streaming app for Android — built with React Native & Expo, powered by YouTube Music.</strong></p>
+
+<p>MuseFlow delivers a beautiful dark-themed UI with silky-smooth animations, real-time synced lyrics, and an intelligent autoplay queue — all without any API keys.</p>
+
+<br />
+
+<!-- ╔══════════════════════════════════╗ -->
+<!--        APK DOWNLOAD BUTTON         -->
+<!-- Fill in your EAS/GitHub APK URL    -->
+<!-- ╚══════════════════════════════════╝ -->
+<a href="YOUR_APK_DOWNLOAD_URL_HERE">
+  <img src="https://img.shields.io/badge/⬇️%20Download%20APK-v1.0.0-brightgreen?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+</a>
+
+<br /><br />
+
+</div>
 
 ---
 
 ## ✨ Features
 
-- 🔍 **Search** — Search any song, artist, or album via YouTube Music
-- 🎧 **High-quality streaming** — Audio streamed directly from YouTube
-- 📃 **Synced lyrics** — Real-time scrolling lyrics with 300ms look-ahead sync
-- 📋 **Smart Queue** — Rolling 15-track queue with the current song always pinned at position 3
-- 🔀 **Autoplay** — Automatically fetches recommended tracks to keep music playing
-- ⏭️ **Skip & Seek** — Hardware-accelerated progress scrubber with zero lag
-- 🔊 **Volume control** — Gesture-driven volume slider with native 60fps animations
-- 🖼️ **Now Playing** — Full-screen player with album art, track info, and controls
-- 📚 **Library** — Save and manage your favourite tracks
-- 🔁 **Repeat & Shuffle** — Full playback mode controls
-- 🌙 **Dark UI** — Premium dark-themed interface with glassmorphism and gradient effects
+| Feature | Description |
+|---|---|
+| 🔍 **Search** | Search any song, artist, or album via YouTube Music |
+| 🎧 **HQ Streaming** | Audio streamed directly from YouTube |
+| 📃 **Synced Lyrics** | Real-time scrolling lyrics with 300ms look-ahead sync |
+| 📋 **Smart Queue** | Rolling 15-track queue — playing song always at position 3 |
+| 🔀 **Autoplay** | Fetches recommended tracks automatically to keep music going |
+| ⏭️ **Seek Scrubber** | Hardware-accelerated 60fps progress slider with zero lag |
+| 🔊 **Volume Control** | Gesture-driven volume slider with native animations |
+| 🖼️ **Now Playing** | Full-screen player with album art, controls, and lyrics |
+| 📚 **Library** | Save and manage your favourite tracks |
+| 🔁 **Repeat & Shuffle** | Full playback mode controls |
+| 🌙 **Dark UI** | Glassmorphism, gradients, and premium dark-mode design |
 
 ---
 
@@ -26,17 +54,90 @@ A premium, feature-rich music streaming app for Android built with **React Nativ
 
 ---
 
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         MuseFlow App                        │
+│                                                             │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────┐  │
+│  │  Screens     │   │  Components  │   │   Services     │  │
+│  │              │   │              │   │                │  │
+│  │ HomeScreen   │   │ Persistent   │   │ ytmusic.ts     │  │
+│  │ SearchScreen │──▶│ Player.tsx   │──▶│ (YT Music API) │  │
+│  │ LibraryScreen│   │              │   │                │  │
+│  │ SettingsScreen   │ Mini Player  │   │ lyrics.ts      │  │
+│  │ PlaylistScreen   │ Full Player  │   │ (Lyrics fetch) │  │
+│  └──────┬───────┘   │ Scrubbers    │   │                │  │
+│         │           │ LyricsDisplay│   │ parser.ts      │  │
+│         │           └──────┬───────┘   │ (YT response   │  │
+│         │                  │           │  parsing)      │  │
+│         ▼                  ▼           │                │  │
+│  ┌─────────────────────────────────┐  │ auth.ts        │  │
+│  │       Zustand Store             │  │ (Guest tokens) │  │
+│  │    usePlaybackStore.ts          │  │                │  │
+│  │                                 │  │ gemini.ts      │  │
+│  │  currentTrack  │  queue         │  │ (AI features)  │  │
+│  │  currentTime   │  isPlaying     │  └────────────────┘  │
+│  │  volume        │  isScrubbing   │                       │
+│  │  pendingSeek   │  isShuffle     │  ┌────────────────┐  │
+│  └────────────────┬────────────────┘  │    Hooks       │  │
+│                   │                   │                │  │
+│                   ▼                   │ useYouTube     │  │
+│  ┌─────────────────────────────────┐  │ Guest.ts       │  │
+│  │         expo-av (Audio)         │  └────────────────┘  │
+│  │                                 │                       │
+│  │  Audio.Sound  ← setPositionAsync│                       │
+│  │  onPlaybackStatusUpdate (50ms)  │                       │
+│  └─────────────────────────────────┘                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow
+
+```
+User Action
+    │
+    ▼
+Screen / Component
+    │  calls action
+    ▼
+usePlaybackStore (Zustand)
+    │  optimistic state update (sync)
+    │  native call (async, non-blocking)
+    ▼
+expo-av Audio.Sound
+    │  onPlaybackStatusUpdate every 50ms
+    ▼
+Store state updated → UI re-renders (isolated sub-components)
+```
+
+### Key Design Decisions
+
+| Decision | Rationale |
+|---|---|
+| **Isolated sub-components** (`ProgressScrubber`, `VolumeScrubber`, `LyricsDisplay`) | Prevents parent `PersistentPlayer` from re-rendering on every 50ms tick |
+| **`Animated.Value` + `PanResponder`** for sliders | Gesture rendering bypasses JS thread entirely — native 60fps |
+| **`handleTouchRef` pattern** | Avoids stale closure over `duration` in the once-created `PanResponder` |
+| **`pendingSeekTime` gate** | Holds the `isScrubbing` lock until the native player *confirms* the new position via a status tick |
+| **`loadToken` counter** | Supersedes in-flight track loads on rapid skip — prevents overlapping audio streams |
+| **Optimistic store updates** | All controls (play/pause/seek/volume) update state synchronously before async native calls |
+| **Rolling 15-track queue** | Current track fixed at index 2; auto-padded with recommendations for endless playback |
+
+---
+
 ## 🛠️ Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Framework | React Native + Expo (managed workflow) |
-| State management | Zustand |
-| Audio playback | expo-av |
-| UI animations | React Native Animated API + PanResponder |
-| Lyrics | Custom time-synced lyrics parser |
-| Music API | YouTube Music (via youtubei.js) |
-| Build | EAS Build |
+| Framework | React Native 0.81 + Expo 54 |
+| Language | TypeScript |
+| State | Zustand |
+| Audio | expo-av |
+| Animations | React Native Animated API + PanResponder |
+| Lyrics | Custom time-synced parser |
+| Music API | YouTube Music via `youtubei.js` |
+| Build | EAS Build (cloud) |
 
 ---
 
@@ -45,7 +146,7 @@ A premium, feature-rich music streaming app for Android built with **React Nativ
 ### Prerequisites
 
 - Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
+- Expo Go app on your Android/iOS device
 
 ### Install & Run
 
@@ -57,30 +158,30 @@ cd museflow-mobile
 # Install dependencies
 npm install
 
-# Start the dev server
+# Start the Expo dev server
 npm start
 ```
 
-Scan the QR code with **Expo Go** on your Android/iOS device.
+Scan the QR code with **Expo Go** on your device.
 
 ---
 
-## 📦 Building an APK
+## 📦 Build APK Yourself
 
-This project uses [EAS Build](https://docs.expo.dev/build/introduction/) for cloud builds.
+This project uses [EAS Build](https://docs.expo.dev/build/introduction/) for cloud builds — no Android Studio required.
 
 ```bash
 # Install EAS CLI
 npm install -g eas-cli
 
-# Login to Expo account
+# Login to your Expo account (free at expo.dev)
 eas login
 
-# Build APK (preview profile)
+# Build the APK on Expo's servers (~10–15 min)
 eas build -p android --profile preview
 ```
 
-The APK download link will be provided after the build completes (~10-15 min).
+You'll receive a download link when the build completes.
 
 ---
 
@@ -88,34 +189,49 @@ The APK download link will be provided after the build completes (~10-15 min).
 
 ```
 museflow-mobile/
-├── App.tsx                  # Root app with navigation
-├── app.json                 # Expo config
-├── eas.json                 # EAS build profiles
+│
+├── App.tsx                       # Root with tab navigation
+├── app.json                      # Expo config (package name, version)
+├── eas.json                      # EAS build profiles (preview = APK)
+├── polyfills.ts                  # ReadableStream + global polyfills
+│
 ├── components/
-│   └── PersistentPlayer.tsx # Full-screen player + mini-player
+│   └── PersistentPlayer.tsx      # Mini-player + full-screen player
+│                                 # (ProgressScrubber, VolumeScrubber,
+│                                 #  LyricsDisplay sub-components)
+│
 ├── screens/
-│   ├── HomeScreen.tsx
-│   ├── SearchScreen.tsx
-│   ├── LibraryScreen.tsx
-│   └── ...
+│   ├── HomeScreen.tsx            # Trending / recommended feed
+│   ├── SearchScreen.tsx          # Search with live results
+│   ├── LibraryScreen.tsx         # Saved tracks & playlists
+│   ├── PlaylistDetailScreen.tsx  # Playlist tracks view
+│   └── SettingsScreen.tsx        # App preferences
+│
 ├── services/
-│   ├── ytmusic.ts           # YouTube Music API wrapper
-│   ├── lyrics.ts            # Lyrics fetching & parsing
-│   └── ...
+│   ├── ytmusic.ts                # YouTube Music API wrapper & types
+│   ├── lyrics.ts                 # Lyrics fetching & time-sync parsing
+│   ├── parser.ts                 # YouTube API response parser
+│   ├── auth.ts                   # Guest token management
+│   ├── decipherer.ts             # YouTube stream URL deciphering
+│   ├── gemini.ts                 # AI-powered features
+│   └── proxy.ts                  # Network proxy layer
+│
 ├── store/
-│   └── usePlaybackStore.ts  # Zustand global playback state
+│   └── usePlaybackStore.ts       # Zustand global playback state
+│                                 # (seek, queue, scrubbing lock)
+│
 └── hooks/
-    └── useYouTubeGuest.ts   # YouTube guest token hook
+    └── useYouTubeGuest.ts        # YouTube guest session hook
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-No API keys required! MuseFlow uses YouTube Music's public guest-token flow to fetch music and metadata.
+**No API keys required.** MuseFlow uses YouTube Music's public guest-token flow to fetch music, metadata, and recommendations.
 
 ---
 
 ## 📄 License
 
-MIT — feel free to use, modify and distribute.
+MIT — feel free to use, modify, and distribute.
