@@ -30,7 +30,9 @@ export default function HomeScreen() {
   const [aiTracks, setAiTracks] = useState<Track[]>([]);
   const [aiVibeName, setAiVibeName] = useState("");
 
-  const { playTrack, setQueue, currentTrack } = usePlaybackStore();
+  const playTrack = usePlaybackStore((s) => s.playTrack);
+  const setQueue = usePlaybackStore((s) => s.setQueue);
+  const currentTrack = usePlaybackStore((s) => s.currentTrack);
 
   // Load recently played and charts on mount/song transition
   useEffect(() => {

@@ -2,6 +2,30 @@ import { create } from 'zustand';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { YTMusic, Track } from '../services/ytmusic';
+import { NativeModules } from 'react-native';
+
+const hasNativeVolumeManager = () => {
+  try {
+    return !!(NativeModules.VolumeManager || NativeModules.RNVolumeManager);
+  } catch (e) {
+    return false;
+  }
+};
+
+let VolumeManager: any = null;
+if (hasNativeVolumeManager()) {
+  try {
+    VolumeManager = require('react-native-volume-manager').VolumeManager;
+  } catch (e) {
+    console.warn("react-native-volume-manager require failed:", e);
+  }
+}
+
+export const isNativeVolumeManagerAvailable = () => {
+  return !!VolumeManager;
+};
+
+export { VolumeManager };
 
 // Each call to playTrack increments this token.
 // Any in-flight load that sees a newer token knows it was superseded and aborts.
@@ -53,6 +77,13 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
     playsInSilentModeIOS: true,
     playThroughEarpieceAndroid: false,
   }).catch(e => console.warn("Failed to set audio mode:", e));
+
+  // Initialize store volume with native system volume if available
+  if (isNativeVolumeManagerAvailable()) {
+    VolumeManager.getVolume().then((result: any) => {
+      set({ volume: result.volume });
+    }).catch((e: any) => console.warn("Failed to get initial system volume:", e));
+  }
 
   // Preload history from AsyncStorage so playTrack starts completely synchronously
   AsyncStorage.getItem('museflow_history').then(raw => {
@@ -245,8 +276,8 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
           { uri: streamUrl, headers },
           {
             shouldPlay: true,
-            volume: isMuted ? 0 : volume,
-            progressUpdateIntervalMillis: 50,
+            volume: isMuted ? 0 : (isNativeVolumeManagerAvailable() ? 1.0 : volume),
+            progressUpdateIntervalMillis: 250,
           },
           onPlaybackStatusUpdate
         );
@@ -416,9 +447,11 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
     },
 
     setVolume: async (value) => {
-      const { sound, isMuted } = get();
+      const { sound } = get();
       set({ volume: value, isMuted: value === 0 });
-      if (sound && !isMuted) {
+      if (isNativeVolumeManagerAvailable()) {
+        VolumeManager.setVolume(value).catch((e: any) => console.warn("setVolume failed:", e));
+      } else if (sound) {
         sound.setVolumeAsync(value).catch(e => console.warn("setVolume failed:", e));
       }
     },
@@ -427,7 +460,9 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       const { isMuted, volume, sound } = get();
       const nextMute = !isMuted;
       set({ isMuted: nextMute });
-      if (sound) {
+      if (isNativeVolumeManagerAvailable()) {
+        VolumeManager.setVolume(nextMute ? 0 : volume).catch((e: any) => console.warn("toggleMute failed:", e));
+      } else if (sound) {
         sound.setVolumeAsync(nextMute ? 0 : volume).catch(e => console.warn("toggleMute failed:", e));
       }
     },

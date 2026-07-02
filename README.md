@@ -20,7 +20,7 @@
 <!--        APK DOWNLOAD BUTTON         -->
 <!-- Fill in your EAS/GitHub APK URL    -->
 <!-- ╚══════════════════════════════════╝ -->
-<a href="YOUR_APK_DOWNLOAD_URL_HERE">
+<a href="https://expo.dev/artifacts/eas/M5Gudccze0ghvVCOOvar4y1XpHNvvuaSkcHs8jl0_VA.apk">
   <img src="https://img.shields.io/badge/⬇️%20Download%20APK-v1.0.0-brightgreen?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
 </a>
 
@@ -50,7 +50,18 @@
 
 ## 📸 Screenshots
 
-> *(Add screenshots here)*
+<p align="center">
+  <img src="assets/screenshots/ss1.jpeg" width="22%" alt="Screenshot 1" />
+  <img src="assets/screenshots/ss2.jpeg" width="22%" alt="Screenshot 2" />
+  <img src="assets/screenshots/ss3.jpeg" width="22%" alt="Screenshot 3" />
+  <img src="assets/screenshots/ss4.jpeg" width="22%" alt="Screenshot 4" />
+</p>
+<p align="center">
+  <img src="assets/screenshots/ss5.jpeg" width="22%" alt="Screenshot 5" />
+  <img src="assets/screenshots/ss6.jpeg" width="22%" alt="Screenshot 6" />
+  <img src="assets/screenshots/ss7.jpeg" width="22%" alt="Screenshot 7" />
+  <img src="assets/screenshots/ss8.jpeg" width="22%" alt="Screenshot 8" />
+</p>
 
 ---
 

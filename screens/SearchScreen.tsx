@@ -38,7 +38,9 @@ export default function SearchScreen() {
   const [selectedTrackForPlaylist, setSelectedTrackForPlaylist] = useState<Track | null>(null);
   const [playlists, setPlaylists] = useState<Array<{ id: string; name: string; tracks: Track[] }>>([]);
 
-  const { playTrack, setQueue, addToQueue } = usePlaybackStore();
+  const playTrack = usePlaybackStore((s) => s.playTrack);
+  const setQueue = usePlaybackStore((s) => s.setQueue);
+  const addToQueue = usePlaybackStore((s) => s.addToQueue);
 
   useEffect(() => {
     if (!query.trim()) {

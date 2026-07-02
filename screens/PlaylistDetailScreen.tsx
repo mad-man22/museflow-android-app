@@ -32,7 +32,9 @@ const cleanDisplayArtist = (artistName: string): string => {
 
 export default function PlaylistDetailScreen({ playlist, onBack, onPlaylistChange }: Props) {
   const [tracks, setTracks] = useState<Track[]>(playlist.tracks);
-  const { setQueue, addToQueue, currentTrack } = usePlaybackStore();
+  const setQueue = usePlaybackStore((s) => s.setQueue);
+  const addToQueue = usePlaybackStore((s) => s.addToQueue);
+  const currentTrack = usePlaybackStore((s) => s.currentTrack);
 
   const savePlaylist = async (newTracks: Track[]) => {
     try {

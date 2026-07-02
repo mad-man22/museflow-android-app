@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { StyleSheet, Text, View, Image, TouchableOpacity, ScrollView, Animated, Dimensions, Platform, ActivityIndicator, Modal, TextInput, Alert, PanResponder, LayoutRectangle } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Play, Pause, SkipForward, SkipBack, Heart, Shuffle, Repeat, ChevronDown, ListMusic, AlignLeft, Volume2, VolumeX, Plus, FolderHeart, GripVertical } from 'lucide-react-native';
-import { usePlaybackStore } from '../store/usePlaybackStore';
+import { usePlaybackStore, isNativeVolumeManagerAvailable, VolumeManager } from '../store/usePlaybackStore';
 import { useShallow } from 'zustand/react/shallow';
 import { LyricsService, LyricsResponse } from '../services/lyrics';
 import { Track } from '../services/ytmusic';
@@ -86,6 +86,16 @@ export default function PersistentPlayer() {
       saveToHistory(currentTrack);
     }
   }, [currentTrack]);
+
+  // Listen for system volume changes in real-time
+  useEffect(() => {
+    if (isNativeVolumeManagerAvailable()) {
+      const volumeListener = VolumeManager.addVolumeListener((result: any) => {
+        usePlaybackStore.setState({ volume: result.volume, isMuted: result.volume === 0 });
+      });
+      return () => volumeListener.remove();
+    }
+  }, []);
 
   const checkLikeStatus = async (trackId: string) => {
     try {
@@ -739,6 +749,37 @@ const VolumeScrubber = memo(() => {
   );
 });
 
+interface LyricListProps {
+  lyrics: Array<{ time: number; text: string }>;
+  activeLyricIndex: number;
+  lineOffsets: React.MutableRefObject<number[]>;
+  lyricsScrollRef: React.RefObject<ScrollView | null>;
+}
+const LyricList = memo(({ lyrics, activeLyricIndex, lineOffsets, lyricsScrollRef }: LyricListProps) => {
+  return (
+    <ScrollView 
+      ref={lyricsScrollRef}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingVertical: 180, paddingHorizontal: 10 }}
+    >
+      {lyrics.map((line, idx) => {
+        const isActive = idx === activeLyricIndex;
+        return (
+          <Text 
+            key={idx} 
+            onLayout={(e) => {
+              lineOffsets.current[idx] = e.nativeEvent.layout.y;
+            }}
+            style={[styles.lyricLine, isActive && styles.activeLyricLine]}
+          >
+            {line.text}
+          </Text>
+        );
+      })}
+    </ScrollView>
+  );
+});
+
 // Sub-Component 3: LyricsDisplay (Isolates lyrics sync scrolling and highlighting)
 const LyricsDisplay = memo(() => {
   const currentTrack = usePlaybackStore((s) => s.currentTrack);
@@ -838,26 +879,12 @@ const LyricsDisplay = memo(() => {
           <Text style={styles.noLyricsText}>No lyrics resolved.</Text>
         </View>
       ) : (
-        <ScrollView 
-          ref={lyricsScrollRef}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingVertical: 180, paddingHorizontal: 10 }}
-        >
-          {lyrics.map((line, idx) => {
-            const isActive = idx === activeLyricIndex;
-            return (
-              <Text 
-                key={idx} 
-                onLayout={(e) => {
-                  lineOffsets.current[idx] = e.nativeEvent.layout.y;
-                }}
-                style={[styles.lyricLine, isActive && styles.activeLyricLine]}
-              >
-                {line.text}
-              </Text>
-            );
-          })}
-        </ScrollView>
+        <LyricList
+          lyrics={lyrics}
+          activeLyricIndex={activeLyricIndex}
+          lineOffsets={lineOffsets}
+          lyricsScrollRef={lyricsScrollRef}
+        />
       )}
     </View>
   );

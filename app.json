@@ -19,6 +19,16 @@
         "backgroundColor": "#121212"
       }
     },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          }
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "545542dd-834a-461d-a517-f09d49f2b671"

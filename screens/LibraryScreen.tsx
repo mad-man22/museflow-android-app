@@ -19,7 +19,10 @@ export default function LibraryScreen() {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   
-  const { playTrack, setQueue, addToQueue, currentTrack } = usePlaybackStore();
+  const playTrack = usePlaybackStore((s) => s.playTrack);
+  const setQueue = usePlaybackStore((s) => s.setQueue);
+  const addToQueue = usePlaybackStore((s) => s.addToQueue);
+  const currentTrack = usePlaybackStore((s) => s.currentTrack);
 
   useEffect(() => {
     setCurrentPlaybackTrack(currentTrack);
