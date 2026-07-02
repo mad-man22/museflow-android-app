@@ -5,6 +5,8 @@
 <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
 <img src="https://img.shields.io/badge/Zustand-FF6B35?style=for-the-badge&logo=react&logoColor=white" />
 <img src="https://img.shields.io/badge/YouTube_Music-FF0000?style=for-the-badge&logo=youtube-music&logoColor=white" />
+<a href="https://github.com/mad-man22/museflow-android-app"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fhits.dwyl.com%2Fmad-man22%2Fmuseflow-android-app.json&label=Visits&style=for-the-badge&color=blueviolet" alt="Visits" /></a>
+<a href="https://github.com/mad-man22/museflow-android-app/releases"><img src="https://img.shields.io/github/downloads/mad-man22/museflow-android-app/total?style=for-the-badge&logo=github&color=brightgreen" alt="Downloads" /></a>
 
 <br /><br />
 
