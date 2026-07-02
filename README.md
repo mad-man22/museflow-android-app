@@ -253,4 +253,4 @@ MIT — feel free to use, modify, and distribute.
 
 ## 🙏 Acknowledgements
 
-A big thank you to [**OpenTune**](https://github.com/DD3Boh/OuterTune) for the design inspiration and for showing what a beautiful, open-source music experience on Android can look like. MuseFlow draws inspiration from its UI philosophy and player design.
+A big thank you to [**OpenTune**](https://github.com/Arturo254/OpenTune) for the design inspiration and for showing what a beautiful, open-source music experience on Android can look like. MuseFlow draws inspiration from its UI philosophy and player design.
