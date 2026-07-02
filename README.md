@@ -9,7 +9,7 @@
 <br />
 
 <a href="https://github.com/mad-man22/museflow-android-app"><img src="https://api.visitorbadge.io/api/VisitorHit?user=mad-man22&repo=museflow-android-app&label=Visits&style=for-the-badge&countColor=%238A2BE2" alt="Visits" /></a>
-<a href="https://github.com/mad-man22/museflow-android-app/releases"><img src="https://img.shields.io/github/downloads/mad-man22/museflow-android-app/total?style=for-the-badge&logo=github&color=brightgreen&v=1.0.0" alt="Downloads" /></a>
+<a href="https://github.com/mad-man22/museflow-android-app/releases"><img src="https://img.shields.io/github/downloads/mad-man22/museflow-android-app/total?style=for-the-badge&logo=github&color=brightgreen&v=1.0.2" alt="Downloads" /></a>
 
 <br /><br />
 
