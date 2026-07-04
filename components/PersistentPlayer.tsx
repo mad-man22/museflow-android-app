@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, Image, TouchableOpacity, ScrollView, Animated, 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Play, Pause, SkipForward, SkipBack, Heart, Shuffle, Repeat, ChevronDown, ListMusic, AlignLeft, Volume2, VolumeX, Plus, FolderHeart, GripVertical } from 'lucide-react-native';
 import { usePlaybackStore, isNativeVolumeManagerAvailable, VolumeManager } from '../store/usePlaybackStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { LyricsService, LyricsResponse } from '../services/lyrics';
 import { Track } from '../services/ytmusic';
@@ -21,6 +22,7 @@ const cleanDisplayArtist = (artistName: string): string => {
 };
 
 export default function PersistentPlayer() {
+  const insets = useSafeAreaInsets();
   // --- SELECTIVE SUBSCRIPTIONS (prevents re-render every 100ms) ---
   // Static track info & controls - only re-renders when track/mode changes
   const { currentTrack, isPlaying, isBuffering, queue, currentIndex, isRepeat, isShuffle } =
@@ -72,12 +74,12 @@ export default function PersistentPlayer() {
   // Toggle slide up/down animation
   useEffect(() => {
     Animated.spring(slideAnim, {
-      toValue: isExpanded ? 0 : SCREEN_HEIGHT - MINI_PLAYER_HEIGHT - 65, // Adjust for bottom tab nav offset
+      toValue: isExpanded ? 0 : SCREEN_HEIGHT - MINI_PLAYER_HEIGHT - (65 + insets.bottom), // Adjust for bottom tab nav offset
       useNativeDriver: true,
       tension: 40,
       friction: 8
     }).start();
-  }, [isExpanded]);
+  }, [isExpanded, insets.bottom]);
 
   // Track changed: check like and save history
   useEffect(() => {
@@ -296,7 +298,7 @@ export default function PersistentPlayer() {
 
       {/* ─── FULLSCREEN EXPANDED PLAYER ─── */}
       {isExpanded && (
-        <View style={styles.expandedContainer}>
+        <View style={[styles.expandedContainer, { paddingBottom: 40 + insets.bottom }]}>
           {/* Header */}
           <View style={styles.header}>
             <TouchableOpacity onPress={() => setIsExpanded(false)} style={styles.headerBtn}>

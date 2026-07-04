@@ -61,6 +61,7 @@ interface PlaybackState {
   setVolume: (value: number) => Promise<void>;
   toggleMute: () => Promise<void>;
   addToQueue: (track: Track) => void;
+  playNext: (track: Track) => void;
   removeFromQueue: (trackId: string) => Promise<void>;
   reorderQueue: (newQueue: Track[], newIndex: number) => void;
   clearQueue: () => Promise<void>;
@@ -472,15 +473,32 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       if (queue.some((t) => t.track_id === track.track_id)) return;
       let newQueue = [...queue];
 
-      // Insert right after the current playing track (which is at index currentIndex)
-      const insertIdx = currentIndex !== -1 ? currentIndex + 1 : 0;
+      // Add to the end of the queue
+      newQueue.push(track);
+      let newIndex = currentIndex;
+      if (newQueue.length > 15) {
+        newQueue.shift();
+        if (newIndex > 0) newIndex--;
+      }
+      set({ queue: newQueue, currentIndex: newIndex });
+    },
+
+    playNext: (track) => {
+      const { queue, currentIndex } = get();
+      // Remove track if it already exists to move it to playNext
+      let newQueue = queue.filter((t) => t.track_id !== track.track_id);
+      
+      const currentTrack = queue[currentIndex];
+      let newIndex = currentTrack ? newQueue.findIndex(t => t.track_id === currentTrack.track_id) : currentIndex;
+      if (newIndex === -1) newIndex = currentIndex;
+
+      const insertIdx = newIndex !== -1 ? newIndex + 1 : 0;
       newQueue.splice(insertIdx, 0, track);
 
-      // Keep size capped at exactly 15 by removing from the end
       if (newQueue.length > 15) {
         newQueue.pop();
       }
-      set({ queue: newQueue });
+      set({ queue: newQueue, currentIndex: newIndex });
     },
 
     removeFromQueue: async (trackId) => {

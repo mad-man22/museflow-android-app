@@ -399,13 +399,25 @@ export const Parser = {
       header?.thumbnail?.croppedSquareThumbnailRenderer?.thumbnail?.thumbnails
     );
 
-    const contents =
-      data.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer
-        ?.content?.sectionListRenderer?.contents || [];
+    const browseResults =
+      data.contents?.singleColumnBrowseResultsRenderer ||
+      data.contents?.twoColumnBrowseResultsRenderer;
+
+    let contents: any[] = [];
+    if (browseResults) {
+      const tabContents = browseResults.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents;
+      if (Array.isArray(tabContents)) {
+        contents = contents.concat(tabContents);
+      }
+      const secContents = browseResults.secondaryContents?.sectionListRenderer?.contents;
+      if (Array.isArray(secContents)) {
+        contents = contents.concat(secContents);
+      }
+    }
     const tracks: Track[] = [];
 
     for (const section of contents) {
-      const shelf = section.musicShelfRenderer;
+      const shelf = section.musicShelfRenderer || section.musicPlaylistShelfRenderer;
       if (shelf) {
         for (const item of shelf.contents || []) {
           const parsed = this.parseMusicResponsiveListItem(

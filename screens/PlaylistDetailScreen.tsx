@@ -33,7 +33,7 @@ const cleanDisplayArtist = (artistName: string): string => {
 export default function PlaylistDetailScreen({ playlist, onBack, onPlaylistChange }: Props) {
   const [tracks, setTracks] = useState<Track[]>(playlist.tracks);
   const setQueue = usePlaybackStore((s) => s.setQueue);
-  const addToQueue = usePlaybackStore((s) => s.addToQueue);
+  const playNext = usePlaybackStore((s) => s.playNext);
   const currentTrack = usePlaybackStore((s) => s.currentTrack);
 
   const savePlaylist = async (newTracks: Track[]) => {
@@ -62,9 +62,9 @@ export default function PlaylistDetailScreen({ playlist, onBack, onPlaylistChang
     setQueue(tracks, idx);
   };
 
-  const handleAddToQueue = (track: Track) => {
-    addToQueue(track);
-    Alert.alert('Added to Queue', `"${track.title}" added to queue.`);
+  const handlePlayNext = (track: Track) => {
+    playNext(track);
+    Alert.alert('Play Next', `"${track.title}" will play next.`);
   };
 
   const handleRemoveTrack = (trackId: string, title: string) => {
@@ -142,7 +142,7 @@ export default function PlaylistDetailScreen({ playlist, onBack, onPlaylistChang
 
         {/* Actions */}
         <View style={styles.actions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => handleAddToQueue(item)}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => handlePlayNext(item)}>
             <ListPlus size={18} color="#a855f7" />
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={() => handleRemoveTrack(item.track_id, item.title)}>

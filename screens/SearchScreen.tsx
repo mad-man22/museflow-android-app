@@ -4,6 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Search as SearchIcon, Play, Plus, Loader2, Sparkles, FolderHeart, ListPlus } from 'lucide-react-native';
 import { usePlaybackStore } from '../store/usePlaybackStore';
 import { YTMusic, Track } from '../services/ytmusic';
+import AlbumDetailScreen from './AlbumDetailScreen';
+import ArtistDetailScreen from './ArtistDetailScreen';
 
 const OFFLINE_DATABASE: Track[] = [
   { track_id: "dQw4w9WgXcQ", title: "Blinding Lights", artists: "The Weeknd", album: "After Hours", thumbnail: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300", category: "songs" },
@@ -37,10 +39,14 @@ export default function SearchScreen() {
   const [playlistModalVisible, setPlaylistModalVisible] = useState(false);
   const [selectedTrackForPlaylist, setSelectedTrackForPlaylist] = useState<Track | null>(null);
   const [playlists, setPlaylists] = useState<Array<{ id: string; name: string; tracks: Track[] }>>([]);
+  const [selectedAlbum, setSelectedAlbum] = useState<{ id: string; title: string; artist: string; thumbnail: string } | null>(null);
+  const [selectedArtist, setSelectedArtist] = useState<{ id: string; name: string; thumbnail: string } | null>(null);
+  const [albumSource, setAlbumSource] = useState<'search' | 'artist'>('search');
 
   const playTrack = usePlaybackStore((s) => s.playTrack);
   const setQueue = usePlaybackStore((s) => s.setQueue);
   const addToQueue = usePlaybackStore((s) => s.addToQueue);
+  const playNext = usePlaybackStore((s) => s.playNext);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -155,6 +161,43 @@ export default function SearchScreen() {
     }
   };
 
+  // If an album is selected, show the album details screen overlay
+  if (selectedAlbum) {
+    return (
+      <AlbumDetailScreen
+        albumId={selectedAlbum.id}
+        albumTitle={selectedAlbum.title}
+        albumArtist={selectedAlbum.artist}
+        albumThumbnail={selectedAlbum.thumbnail}
+        onBack={() => {
+          setSelectedAlbum(null);
+        }}
+        onAddToPlaylist={(track) => {
+          handleAddToPlaylistPrompt(track);
+        }}
+      />
+    );
+  }
+
+  // If an artist is selected, show the artist details screen overlay
+  if (selectedArtist) {
+    return (
+      <ArtistDetailScreen
+        artistId={selectedArtist.id}
+        artistName={selectedArtist.name}
+        artistThumbnail={selectedArtist.thumbnail}
+        onBack={() => setSelectedArtist(null)}
+        onSelectAlbum={(album) => {
+          setAlbumSource('artist');
+          setSelectedAlbum(album);
+        }}
+        onAddToPlaylist={(track) => {
+          handleAddToPlaylistPrompt(track);
+        }}
+      />
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Header Banner */}
@@ -215,7 +258,31 @@ export default function SearchScreen() {
                 if (activeFilter === 'all' && index === 0) {
                   // Render a Top Result Card
                   return (
-                    <TouchableOpacity style={styles.topResultCard} onPress={() => playSong(item)}>
+                    <TouchableOpacity 
+                      style={styles.topResultCard} 
+                      onPress={async () => {
+                        const isTrack = item.category === 'songs' || item.track_id;
+                        const isAlbum = item.category === 'albums' || item.album_id;
+                        const isArtist = item.category === 'artists' || item.artist_id;
+
+                        if (isTrack) {
+                          playSong(item);
+                        } else if (isAlbum) {
+                          setSelectedAlbum({
+                            id: item.album_id || item.id,
+                            title: item.title || item.name,
+                            artist: item.artist || item.artists || 'Unknown Artist',
+                            thumbnail: item.thumbnail,
+                          });
+                        } else if (isArtist) {
+                          setSelectedArtist({
+                            id: item.artist_id || item.id,
+                            name: item.title || item.name,
+                            thumbnail: item.thumbnail,
+                          });
+                        }
+                      }}
+                    >
                       <Image source={{ uri: item.thumbnail }} style={styles.topResultImage as any} />
                       <View style={styles.topResultDetails}>
                         <View style={styles.badgeRow}>
@@ -243,25 +310,18 @@ export default function SearchScreen() {
                       onPress={async () => {
                         if (isTrack) playSong(item);
                         else if (isAlbum) {
-                          // Play first track of album
-                          try {
-                            const details = await YTMusic.getAlbumDetails(item.album_id);
-                            if (details.tracks.length > 0) {
-                              setQueue(details.tracks, 0);
-                            }
-                          } catch (e) {
-                            Alert.alert('Error', 'Failed to load album tracks.');
-                          }
+                          setSelectedAlbum({
+                            id: item.album_id,
+                            title: item.title || item.name,
+                            artist: item.artist || item.artists || 'Unknown Artist',
+                            thumbnail: item.thumbnail,
+                          });
                         } else if (isArtist) {
-                          // Play artist top tracks
-                          try {
-                            const details = await YTMusic.getArtistDetails(item.artist_id);
-                            if (details.topTracks.length > 0) {
-                              setQueue(details.topTracks, 0);
-                            }
-                          } catch (e) {
-                            Alert.alert('Error', 'Failed to load artist tracks.');
-                          }
+                          setSelectedArtist({
+                            id: item.artist_id || item.id,
+                            name: item.title || item.name,
+                            thumbnail: item.thumbnail,
+                          });
                         }
                       }}
                     >
@@ -282,14 +342,14 @@ export default function SearchScreen() {
                           style={styles.actionButton}
                           onPress={() => {
                             const t: any = item;
-                            addToQueue({
+                            playNext({
                               track_id: t.track_id || t.videoId,
                               title: t.title,
                               artists: t.artists,
                               album: t.album || 'Single',
                               thumbnail: t.thumbnail,
                             });
-                            Alert.alert('Queue', `"${item.title}" added to queue.`);
+                            Alert.alert('Play Next', `"${item.title}" will play next.`);
                           }}
                         >
                           <ListPlus size={18} color="#a855f7" />

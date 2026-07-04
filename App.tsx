@@ -1,6 +1,7 @@
 import './polyfills';
 import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, SafeAreaView, TouchableOpacity, Text, StatusBar, Platform, Animated, Image } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Search, Library, Settings } from 'lucide-react-native';
 import HomeScreen from './screens/HomeScreen';
 import SearchScreen from './screens/SearchScreen';
@@ -11,8 +12,17 @@ import PersistentPlayer from './components/PersistentPlayer';
 type ScreenType = 'home' | 'search' | 'library' | 'settings';
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent() {
   const [currentScreen, setCurrentScreen] = useState<ScreenType>('home');
   const [showSplash, setShowSplash] = useState(true);
+  const insets = useSafeAreaInsets();
 
   // Animated values for splash screen transitions
   const logoScale = useRef(new Animated.Value(0.3)).current;
@@ -117,7 +127,7 @@ export default function App() {
       <PersistentPlayer />
 
       {/* Custom Bottom Tab Navigator */}
-      <View style={styles.tabBar}>
+      <View style={[styles.tabBar, { height: 65 + insets.bottom, paddingBottom: insets.bottom }]}>
         <TouchableOpacity 
           style={styles.tabItem} 
           onPress={() => setCurrentScreen('home')}
