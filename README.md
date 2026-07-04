@@ -25,8 +25,8 @@
 <!--        APK DOWNLOAD BUTTON         -->
 <!-- Fill in your EAS/GitHub APK URL    -->
 <!-- ╚══════════════════════════════════╝ -->
-<a href="https://github.com/mad-man22/museflow-android-app/releases/download/v1.0.0/museflow-v1.0.0.apk">
-  <img src="https://img.shields.io/badge/⬇️%20Download%20APK-v1.0.0-brightgreen?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
+<a href="https://expo.dev/artifacts/eas/oNhgrDCnkG5h-chIAQRdqM5YMEOJLVa1kIxlJPLSKyw.apk">
+  <img src="https://img.shields.io/badge/⬇️%20Download%20APK-v1.1.0-brightgreen?style=for-the-badge&logo=android&logoColor=white" alt="Download APK" />
 </a>
 
 <br /><br />
