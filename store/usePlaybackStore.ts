@@ -27,6 +27,71 @@ export const isNativeVolumeManagerAvailable = () => {
 
 export { VolumeManager };
 
+// Lock screen media control helpers (expo-media-control)
+let MediaControl: any = null;
+let Command: any = null;
+let PlaybackState: any = null;
+let isMediaControlAvailable = false;
+
+try {
+  const MC = require('expo-media-control');
+  MediaControl = MC.MediaControl;
+  Command = MC.Command;
+  PlaybackState = MC.PlaybackState;
+  isMediaControlAvailable = !!MediaControl;
+} catch (e) {
+  console.warn('[PlaybackStore] expo-media-control not available');
+}
+
+export { MediaControl, Command, PlaybackState, isMediaControlAvailable };
+
+export const initMediaControls = async () => {
+  if (!isMediaControlAvailable) return;
+  try {
+    await MediaControl.enableMediaControls({
+      capabilities: [
+        Command.PLAY,
+        Command.PAUSE,
+        Command.STOP,
+        Command.NEXT_TRACK,
+        Command.PREVIOUS_TRACK,
+        Command.SEEK,
+      ],
+      compactCapabilities: [
+        Command.PREVIOUS_TRACK,
+        Command.PLAY,
+        Command.NEXT_TRACK,
+      ],
+    });
+  } catch (err) {
+    console.warn('Failed to enable media controls:', err);
+  }
+};
+
+export const updateMediaMetadata = async (track: Track | null, durationSeconds: number) => {
+  if (!isMediaControlAvailable || !track) return;
+  try {
+    await MediaControl.updateMetadata({
+      title: track.title,
+      artist: track.artists,
+      album: track.album || 'Single',
+      artwork: track.thumbnail ? { uri: track.thumbnail } : undefined,
+      duration: durationSeconds || 0,
+    });
+  } catch (err) {
+    console.warn('Failed to update media metadata:', err);
+  }
+};
+
+export const updateMediaPlaybackState = async (state: string) => {
+  if (!isMediaControlAvailable) return;
+  try {
+    await MediaControl.updatePlaybackState(state);
+  } catch (err) {
+    console.warn('Failed to update playback state:', err);
+  }
+};
+
 // Each call to playTrack increments this token.
 // Any in-flight load that sees a newer token knows it was superseded and aborts.
 let loadToken = 0;
@@ -132,6 +197,9 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       return;
     }
 
+    const lastPlaying = get().isPlaying;
+    const lastBuffering = get().isBuffering;
+
     set({
       isPlaying: status.isPlaying,
       isBuffering: status.shouldPlay ? status.isBuffering : false,
@@ -139,8 +207,15 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       duration: (status.durationMillis || 0) / 1000,
     });
 
+    if (status.isBuffering && !lastBuffering) {
+      updateMediaPlaybackState(PlaybackState.BUFFERING);
+    } else if (status.isPlaying !== lastPlaying) {
+      updateMediaPlaybackState(status.isPlaying ? PlaybackState.PLAYING : PlaybackState.PAUSED);
+    }
+
     if (status.didJustFinish) {
       console.log("Track finished. Transitioning...");
+      updateMediaPlaybackState(PlaybackState.STOPPED);
       const { isRepeat, sound } = get();
       if (isRepeat === 'one' && sound) {
         sound.replayAsync().catch(() => get().nextTrack());
@@ -273,7 +348,7 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
         }
 
         const { volume, isMuted } = get();
-        const { sound: newSound } = await Audio.Sound.createAsync(
+        const { sound: newSound, status } = await Audio.Sound.createAsync(
           { uri: streamUrl, headers },
           {
             shouldPlay: true,
@@ -293,6 +368,9 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
 
         set({ sound: newSound, isPlaying: true, isBuffering: false });
         console.log(`[playTrack #${myToken}] ✓ Playing: ${track.title}`);
+        const durationSec = status && status.isLoaded ? ((status as any).durationMillis || 0) / 1000 : 0;
+        updateMediaMetadata(track, durationSec);
+        updateMediaPlaybackState(PlaybackState.PLAYING);
       } catch (err) {
         if (myToken === loadToken) {
           console.error(`[playTrack #${myToken}] Failed to stream:`, err);
@@ -311,6 +389,7 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       const nextPlaying = !isPlaying;
       // Optimistic update
       set({ isPlaying: nextPlaying, isBuffering: false });
+      updateMediaPlaybackState(nextPlaying ? PlaybackState.PLAYING : PlaybackState.PAUSED);
 
       if (nextPlaying) {
         sound.playAsync().catch(e => console.warn("playAsync failed:", e));
@@ -325,6 +404,7 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       
       // Optimistic update
       set({ isPlaying: playing, isBuffering: playing ? get().isBuffering : false });
+      updateMediaPlaybackState(playing ? PlaybackState.PLAYING : PlaybackState.PAUSED);
 
       if (playing) {
         sound.playAsync().catch(e => console.warn("playAsync failed:", e));

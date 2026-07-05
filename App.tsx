@@ -8,6 +8,7 @@ import SearchScreen from './screens/SearchScreen';
 import LibraryScreen from './screens/LibraryScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import PersistentPlayer from './components/PersistentPlayer';
+import { usePlaybackStore } from './store/usePlaybackStore';
 
 type ScreenType = 'home' | 'search' | 'library' | 'settings';
 
@@ -97,6 +98,52 @@ function AppContent() {
     }, 2800);
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // Listen for native media control events (earphone clicks, lock screen commands)
+  useEffect(() => {
+    let removeMediaListener: (() => void) | undefined;
+
+    const setupMediaControls = async () => {
+      const store = require('./store/usePlaybackStore');
+      if (store.isMediaControlAvailable && store.MediaControl) {
+        await store.initMediaControls();
+        const remove = store.MediaControl.addListener((event: any) => {
+          console.log('[MediaControl Event]:', event.command);
+          const state = usePlaybackStore.getState();
+          switch (event.command) {
+            case store.Command.PLAY:
+              state.setPlaying(true);
+              break;
+            case store.Command.PAUSE:
+              state.setPlaying(false);
+              break;
+            case store.Command.NEXT_TRACK:
+              state.nextTrack();
+              break;
+            case store.Command.PREVIOUS_TRACK:
+              state.prevTrack();
+              break;
+            case store.Command.STOP:
+              state.setPlaying(false);
+              break;
+          }
+        });
+        removeMediaListener = remove;
+      }
+    };
+
+    setupMediaControls();
+
+    return () => {
+      if (removeMediaListener) {
+        removeMediaListener();
+      }
+      const store = require('./store/usePlaybackStore');
+      if (store.isMediaControlAvailable && store.MediaControl) {
+        store.MediaControl.disableMediaControls();
+      }
+    };
   }, []);
 
   const renderScreen = () => {
