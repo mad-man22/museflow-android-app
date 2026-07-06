@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Save, Trash2, Key, Info, User, LogOut, Globe } from 'lucide-react-native';
+import { Save, Trash2, Key, Info, User, LogOut, Globe, Sliders, Music } from 'lucide-react-native';
 import { AuthService } from '../services/auth';
 import { ProxyService } from '../services/proxy';
 import { LoginScreen } from './LoginScreen';
@@ -18,6 +18,11 @@ export default function SettingsScreen() {
   const [activeGateway, setActiveGateway] = useState('');
   const [latency, setLatency] = useState<string>('Not tested');
   const [isTestingLatency, setIsTestingLatency] = useState(false);
+
+  // Home preferences states
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>(['Kannada', 'English']);
+  const [favArtistsText, setFavArtistsText] = useState('Puneeth Rajkumar, Taylor Swift');
+  const [isSavingPreferences, setIsSavingPreferences] = useState(false);
 
   useEffect(() => {
     // Load existing API Key
@@ -37,6 +42,17 @@ export default function SettingsScreen() {
       setActiveGateway(gw);
       checkProxyLatency(gw);
     });
+
+    // Load home preferences
+    AsyncStorage.getItem('museflow_home_preferences')
+      .then((val) => {
+        if (val) {
+          const parsed = JSON.parse(val);
+          if (parsed.languages) setSelectedLanguages(parsed.languages);
+          if (parsed.artists) setFavArtistsText(parsed.artists.join(', '));
+        }
+      })
+      .catch((err) => console.warn('Failed to load home preferences:', err));
   }, []);
 
   const checkProxyLatency = async (gateway: string) => {
@@ -73,6 +89,36 @@ export default function SettingsScreen() {
     const gw = await ProxyService.getActiveGateway();
     setActiveGateway(gw);
     checkProxyLatency(gw);
+  };
+
+  const toggleLanguage = (lang: string) => {
+    if (selectedLanguages.includes(lang)) {
+      setSelectedLanguages(selectedLanguages.filter(l => l !== lang));
+    } else {
+      setSelectedLanguages([...selectedLanguages, lang]);
+    }
+  };
+
+  const handleSavePreferences = async () => {
+    setIsSavingPreferences(true);
+    try {
+      const artistList = favArtistsText
+        .split(',')
+        .map(a => a.trim())
+        .filter(a => a.length > 0);
+
+      const prefs = {
+        languages: selectedLanguages,
+        artists: artistList,
+      };
+
+      await AsyncStorage.setItem('museflow_home_preferences', JSON.stringify(prefs));
+      Alert.alert('Success', 'Home page preferences updated successfully!');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to save preferences.');
+    } finally {
+      setIsSavingPreferences(false);
+    }
   };
 
   const handleSaveKey = async () => {
@@ -242,6 +288,51 @@ export default function SettingsScreen() {
               </Text>
             </View>
           )}
+        </View>
+
+        {/* Home Preferences Panel */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Sliders size={20} color="#a855f7" />
+            <Text style={styles.cardTitle}>Home Page Preferences</Text>
+          </View>
+          
+          <Text style={styles.cardDescription}>
+            Customize which trending charts and artist feeds are displayed on your Home screen. Choose languages and input favorite artists.
+          </Text>
+
+          <Text style={styles.inputLabel}>Select Languages:</Text>
+          <View style={styles.langGrid}>
+            {['Kannada', 'English', 'Hindi', 'Telugu', 'Tamil', 'Punjabi', 'Malayalam'].map((lang) => {
+              const active = selectedLanguages.includes(lang);
+              return (
+                <TouchableOpacity
+                  key={lang}
+                  style={[styles.langChip, active && styles.langChipActive]}
+                  onPress={() => toggleLanguage(lang)}
+                >
+                  <Text style={[styles.langChipText, active && styles.langChipTextActive]}>
+                    {lang}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Text style={styles.inputLabel}>Favorite Artists (comma separated):</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Puneeth Rajkumar, Taylor Swift, Anirudh Ravichander..."
+            placeholderTextColor="#71717a"
+            value={favArtistsText}
+            onChangeText={setFavArtistsText}
+            autoCorrect={false}
+          />
+
+          <TouchableOpacity style={styles.saveButton} onPress={handleSavePreferences} disabled={isSavingPreferences}>
+            <Save size={18} color="#000000" style={styles.buttonIcon} />
+            <Text style={styles.saveButtonText}>{isSavingPreferences ? 'Saving...' : 'Save Preferences'}</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Gemini API Key Panel */}
@@ -531,5 +622,31 @@ const styles = StyleSheet.create({
     color: '#71717a',
     fontSize: 12,
     fontWeight: '500',
+  },
+  langGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  langChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#09090b',
+    borderWidth: 1,
+    borderColor: '#27272a',
+  },
+  langChipActive: {
+    backgroundColor: '#a855f720',
+    borderColor: '#a855f780',
+  },
+  langChipText: {
+    fontSize: 12,
+    color: '#a1a1aa',
+    fontWeight: '600',
+  },
+  langChipTextActive: {
+    color: '#a855f7',
   },
 });

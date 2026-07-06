@@ -1,9 +1,28 @@
+/**
+ * usePlaybackStore — MuseFlow Playback Store (react-native-track-player)
+ *
+ * Architecture:
+ * - TrackPlayer handles ALL native audio: playback, background service,
+ *   foreground service, lock screen controls, Bluetooth — 100% in native code.
+ * - This Zustand store manages: queue state, UI state, and delegates all
+ *   audio operations to TrackPlayer.
+ * - The PlaybackService.ts handles background events (track changes, etc.).
+ */
+import TrackPlayer, {
+  Capability,
+  State,
+  RepeatMode,
+} from 'react-native-track-player';
+
+export { TrackPlayer, Capability, State, RepeatMode };
+
 import { create } from 'zustand';
-import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { YTMusic, Track } from '../services/ytmusic';
 import { NativeModules } from 'react-native';
 
+
+// ─── Volume Manager (optional native volume) ────────────────────────────────
 const hasNativeVolumeManager = () => {
   try {
     return !!(NativeModules.VolumeManager || NativeModules.RNVolumeManager);
@@ -12,93 +31,81 @@ const hasNativeVolumeManager = () => {
   }
 };
 
-let VolumeManager: any = null;
+export let VolumeManager: any = null;
 if (hasNativeVolumeManager()) {
   try {
     VolumeManager = require('react-native-volume-manager').VolumeManager;
   } catch (e) {
-    console.warn("react-native-volume-manager require failed:", e);
+    console.warn('react-native-volume-manager require failed:', e);
   }
 }
 
-export const isNativeVolumeManagerAvailable = () => {
-  return !!VolumeManager;
-};
+export const isNativeVolumeManagerAvailable = () => !!VolumeManager;
 
-export { VolumeManager };
-
-// Lock screen media control helpers (expo-media-control)
-let MediaControl: any = null;
-let Command: any = null;
-let PlaybackState: any = null;
-let isMediaControlAvailable = false;
-
-try {
-  const MC = require('expo-media-control');
-  MediaControl = MC.MediaControl;
-  Command = MC.Command;
-  PlaybackState = MC.PlaybackState;
-  isMediaControlAvailable = !!MediaControl;
-} catch (e) {
-  console.warn('[PlaybackStore] expo-media-control not available');
-}
-
-export { MediaControl, Command, PlaybackState, isMediaControlAvailable };
-
-export const initMediaControls = async () => {
-  if (!isMediaControlAvailable) return;
-  try {
-    await MediaControl.enableMediaControls({
-      capabilities: [
-        Command.PLAY,
-        Command.PAUSE,
-        Command.STOP,
-        Command.NEXT_TRACK,
-        Command.PREVIOUS_TRACK,
-        Command.SEEK,
-      ],
-      compactCapabilities: [
-        Command.PREVIOUS_TRACK,
-        Command.PLAY,
-        Command.NEXT_TRACK,
-      ],
-    });
-  } catch (err) {
-    console.warn('Failed to enable media controls:', err);
-  }
-};
-
-export const updateMediaMetadata = async (track: Track | null, durationSeconds: number) => {
-  if (!isMediaControlAvailable || !track) return;
-  try {
-    await MediaControl.updateMetadata({
-      title: track.title,
-      artist: track.artists,
-      album: track.album || 'Single',
-      artwork: track.thumbnail ? { uri: track.thumbnail } : undefined,
-      duration: durationSeconds || 0,
-    });
-  } catch (err) {
-    console.warn('Failed to update media metadata:', err);
-  }
-};
-
-export const updateMediaPlaybackState = async (state: string) => {
-  if (!isMediaControlAvailable) return;
-  try {
-    await MediaControl.updatePlaybackState(state);
-  } catch (err) {
-    console.warn('Failed to update playback state:', err);
-  }
-};
-
-// Each call to playTrack increments this token.
-// Any in-flight load that sees a newer token knows it was superseded and aborts.
-let loadToken = 0;
+// ─── Session History (for queue padding) ────────────────────────────────────
 let sessionHistory: Track[] = [];
-// Tracks the target seek position — cleared once native player confirms arrival
-let pendingSeekTime: number | null = null;
 
+// ─── Load token (abort stale playTrack calls) ────────────────────────────────
+let loadToken = 0;
+
+// ─── TrackPlayer initialised guard ────────────────────────────────────────
+let playerReady = false;
+let playerSetupPromise: Promise<void> | null = null;
+
+export const ensurePlayerReady = async (): Promise<void> => {
+  if (playerReady) return;
+  if (playerSetupPromise) return playerSetupPromise;
+
+  playerSetupPromise = (async () => {
+    try {
+      await TrackPlayer.setupPlayer({
+        minBuffer: 15,
+        maxBuffer: 50,
+        playBuffer: 2,
+        backBuffer: 30,
+        waitForBuffer: true,
+      } as any);
+
+      await TrackPlayer.updateOptions({
+        android: {
+          appKilledPlaybackBehavior: 1, // ContinuePlayback
+        } as any,
+        capabilities: [
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
+          Capability.SeekTo,
+          Capability.Stop,
+        ],
+        compactCapabilities: [
+          Capability.SkipToPrevious,
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+        ],
+        notificationCapabilities: [
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
+          Capability.SeekTo,
+        ] as any,
+        progressUpdateEventInterval: 1,
+      });
+
+      playerReady = true;
+      console.log('[TrackPlayer] Setup complete');
+    } catch (e) {
+      console.warn('[TrackPlayer] Setup failed:', e);
+      playerSetupPromise = null;
+    }
+  })();
+
+  return playerSetupPromise;
+};
+
+// ─── State Interface ─────────────────────────────────────────────────────────
 interface PlaybackState {
   currentTrack: Track | null;
   isPlaying: boolean;
@@ -111,9 +118,11 @@ interface PlaybackState {
   currentIndex: number;
   isRepeat: 'none' | 'all' | 'one';
   isShuffle: boolean;
-  sound: Audio.Sound | null;
-
   isScrubbing: boolean;
+
+  // Legacy field — kept for JamScreen compatibility (always null with RNTP)
+  sound: null;
+
   setIsScrubbing: (scrubbing: boolean) => void;
   updateCurrentTime: (seconds: number) => void;
 
@@ -133,95 +142,116 @@ interface PlaybackState {
   setQueue: (tracks: Track[], startIndex?: number) => Promise<void>;
   toggleRepeat: () => void;
   toggleShuffle: () => void;
+
+  // Internal: called from PlaybackService when active track changes
+  loadNextIntoPlayer: () => Promise<void>;
+  // Internal: called from PlaybackService when native queue ends
+  handleQueueEnded: () => Promise<void>;
 }
 
+// ─── Store ──────────────────────────────────────────────────────────────────
 export const usePlaybackStore = create<PlaybackState>((set, get) => {
-  // Helper to configure audio mode for background playback on Android/iOS
-  Audio.setAudioModeAsync({
-    allowsRecordingIOS: false,
-    staysActiveInBackground: true,
-    playsInSilentModeIOS: true,
-    playThroughEarpieceAndroid: false,
-  }).catch(e => console.warn("Failed to set audio mode:", e));
-
-  // Initialize store volume with native system volume if available
+  // Load volume from native on init
   if (isNativeVolumeManagerAvailable()) {
     VolumeManager.getVolume().then((result: any) => {
       set({ volume: result.volume });
-    }).catch((e: any) => console.warn("Failed to get initial system volume:", e));
+    }).catch(() => {});
   }
 
-  // Preload history from AsyncStorage so playTrack starts completely synchronously
+  // Restore session history from AsyncStorage
   AsyncStorage.getItem('museflow_history').then(raw => {
     if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        sessionHistory = parsed.slice(0, 10);
-      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) sessionHistory = parsed.slice(0, 10);
+      } catch (_) {}
     }
   }).catch(() => {});
 
-  // Helper to unload active sound
-  const unloadCurrentSound = async () => {
-    const { sound } = get();
-    if (sound) {
-      // Stop first to prevent any continued audio output
-      try { await sound.stopAsync(); } catch (_) {}
-      try { await sound.unloadAsync(); } catch (e) {
-        console.warn("Unloading sound failed:", e);
-      }
-    }
-    set({ sound: null, isPlaying: false, isBuffering: false, currentTime: 0, duration: 0 });
-  };
+  // ─── loadNextIntoPlayer ────────────────────────────────────────────────
+  // Called by PlaybackService when the active track changes.
+  // Resolves the NEXT track's stream URL and adds it to TrackPlayer's queue
+  // so the native engine can pre-buffer it. This runs right after a new song
+  // starts — while network access is guaranteed.
+  const loadNextIntoPlayer = async () => {
+    const { queue, currentIndex, isRepeat, isShuffle } = get();
+    if (queue.length === 0) return;
 
-  // Callback to track status updates from Expo AV
-  const onPlaybackStatusUpdate = (status: any) => {
-    if (!status.isLoaded) {
-      if (status.error) {
-        console.error("Playback error:", status.error);
-        get().nextTrack(); // Auto-skip on failure
-      }
-      return;
-    }
-
-    if (get().isScrubbing) {
-      // Still waiting for the native player to arrive at the scrub target.
-      // Accept the tick only when positionMillis is within 0.5s of the target.
-      if (pendingSeekTime !== null) {
-        const reportedSec = status.positionMillis / 1000;
-        if (Math.abs(reportedSec - pendingSeekTime) <= 0.5) {
-          pendingSeekTime = null;
-          set({ isScrubbing: false, currentTime: reportedSec, duration: (status.durationMillis || 0) / 1000 });
+    let nextIndex: number;
+    if (isShuffle) {
+      nextIndex = Math.floor(Math.random() * queue.length);
+    } else {
+      nextIndex = currentIndex + 1;
+      if (nextIndex >= queue.length) {
+        if (isRepeat === 'all') {
+          nextIndex = 0;
+        } else {
+          // End of queue — handleQueueEnded will deal with this
+          return;
         }
       }
+    }
+
+    const nextTrack = queue[nextIndex];
+    if (!nextTrack) return;
+
+    try {
+      // Check if it's already in TrackPlayer's native queue
+      const tpQueue = await TrackPlayer.getQueue();
+      const alreadyQueued = tpQueue.some((t: any) => t.id === nextTrack.track_id);
+      if (alreadyQueued) return;
+
+      console.log(`[loadNextIntoPlayer] Resolving N+1: ${nextTrack.title}`);
+      const streamData = await YTMusic.resolveStream(nextTrack.track_id);
+
+      await TrackPlayer.add({
+        id: nextTrack.track_id,
+        url: streamData.url,
+        title: nextTrack.title,
+        artist: nextTrack.artists,
+        artwork: nextTrack.thumbnail,
+        duration: nextTrack.duration,
+        headers: streamData.headers,
+      } as any);
+
+      console.log(`[loadNextIntoPlayer] ✓ Added N+1 to native queue: ${nextTrack.title}`);
+    } catch (e) {
+      console.warn('[loadNextIntoPlayer] Failed:', e);
+    }
+  };
+
+  // ─── handleQueueEnded ─────────────────────────────────────────────────────
+  const handleQueueEnded = async () => {
+    const { queue, currentIndex, currentTrack, isRepeat } = get();
+
+    if (isRepeat === 'all' && queue.length > 0) {
+      const first = queue[0];
+      set({ currentIndex: 0 });
+      await get().playTrack(first, queue);
       return;
     }
 
-    const lastPlaying = get().isPlaying;
-    const lastBuffering = get().isBuffering;
+    if (!currentTrack) return;
 
-    set({
-      isPlaying: status.isPlaying,
-      isBuffering: status.shouldPlay ? status.isBuffering : false,
-      currentTime: status.positionMillis / 1000,
-      duration: (status.durationMillis || 0) / 1000,
-    });
-
-    if (status.isBuffering && !lastBuffering) {
-      updateMediaPlaybackState(PlaybackState.BUFFERING);
-    } else if (status.isPlaying !== lastPlaying) {
-      updateMediaPlaybackState(status.isPlaying ? PlaybackState.PLAYING : PlaybackState.PAUSED);
-    }
-
-    if (status.didJustFinish) {
-      console.log("Track finished. Transitioning...");
-      updateMediaPlaybackState(PlaybackState.STOPPED);
-      const { isRepeat, sound } = get();
-      if (isRepeat === 'one' && sound) {
-        sound.replayAsync().catch(() => get().nextTrack());
-      } else {
-        get().nextTrack();
+    try {
+      console.log('[handleQueueEnded] Fetching recommendations...');
+      let recs = await YTMusic.getRelatedTracks(currentTrack.track_id);
+      if (!recs || recs.length === 0) {
+        const cleanArtist = currentTrack.artists.replace(/^(Song|Video|Artist|Album|Single|Playlist)\s*/i, '');
+        recs = await YTMusic.search(`${cleanArtist} radio`, 'songs');
       }
+
+      if (recs && recs.length > 0) {
+        const existingIds = new Set(queue.map(q => q.track_id));
+        const freshRecs = recs.filter(r => !existingIds.has(r.track_id));
+        const batch = (freshRecs.length > 0 ? freshRecs : recs).slice(0, 15);
+        const updatedQueue = [...queue, ...batch];
+        set({ queue: updatedQueue });
+        await loadNextIntoPlayer();
+        console.log(`[handleQueueEnded] ✓ Appended ${batch.length} tracks`);
+      }
+    } catch (e) {
+      console.warn('[handleQueueEnded] Recommendations failed:', e);
     }
   };
 
@@ -241,33 +271,35 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
     sound: null,
 
     setIsScrubbing: (scrubbing) => set({ isScrubbing: scrubbing }),
-    updateCurrentTime: (seconds) => set({ currentTime: seconds }),
+    updateCurrentTime: (seconds) => {
+      if (!get().isScrubbing) set({ currentTime: seconds });
+    },
 
+    loadNextIntoPlayer,
+    handleQueueEnded,
+
+    // ─── playTrack ────────────────────────────────────────────────────────
     playTrack: async (track, queueList) => {
-      // Issue a new token — any previous load will detect this and abort.
       const myToken = ++loadToken;
 
-      // Maintain session history of played tracks
+      // Save to session history
       const currentTrackAtStart = get().currentTrack;
       if (currentTrackAtStart) {
         sessionHistory = sessionHistory.filter(t => t.track_id !== currentTrackAtStart.track_id);
         sessionHistory.push(currentTrackAtStart);
-        if (sessionHistory.length > 10) {
-          sessionHistory.shift();
-        }
+        if (sessionHistory.length > 10) sessionHistory.shift();
+        AsyncStorage.setItem('museflow_history', JSON.stringify(sessionHistory)).catch(() => {});
       }
 
-      // Preceding tracks (exactly 2)
-      const preceding: Track[] = [];
+      // Build queue with 2 preceding + track + up to 12 upcoming
       const sourceQueue = queueList || get().queue || [];
-      const sourceIdx = sourceQueue.findIndex((t) => t.track_id === track.track_id);
+      const sourceIdx = sourceQueue.findIndex(t => t.track_id === track.track_id);
 
+      const preceding: Track[] = [];
       if (sourceIdx !== -1) {
         if (sourceIdx >= 1) preceding.push(sourceQueue[sourceIdx - 1]);
         if (sourceIdx >= 2) preceding.unshift(sourceQueue[sourceIdx - 2]);
       }
-
-      // If we don't have 2 preceding tracks, fill from session history (latest to oldest)
       const historyCopy = [...sessionHistory].reverse();
       for (const histTrack of historyCopy) {
         if (preceding.length >= 2) break;
@@ -275,28 +307,17 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
           preceding.unshift(histTrack);
         }
       }
+      while (preceding.length < 2) preceding.unshift(track);
 
-      // If still not enough (e.g. fresh install, first play), pad with duplicate of track
-      while (preceding.length < 2) {
-        preceding.unshift(track);
-      }
-
-      // Upcoming tracks (exactly 12)
       let upcoming: Track[] = [];
       if (sourceIdx !== -1) {
         upcoming = sourceQueue.slice(sourceIdx + 1, sourceIdx + 13);
       }
-
       let initialQueue = [...preceding, track, ...upcoming];
-      if (initialQueue.length > 15) {
-        initialQueue = initialQueue.slice(0, 15);
-      }
-
-      // Set playing index to exactly 2 (the 3rd position)
+      if (initialQueue.length > 15) initialQueue = initialQueue.slice(0, 15);
       const newIndex = 2;
 
-      // *** INSTANT UI UPDATE — happens synchronously before any await ***
-      // The track artwork / title / artist change on the very same frame.
+      // Instant UI update
       set({
         currentTrack: track,
         queue: initialQueue,
@@ -307,74 +328,54 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
         duration: 0,
       });
 
-      // Silence + unload the old sound in the background — don't await it
-      // so we never block the UI. The token check below will catch any race.
-      const oldSound = get().sound;
-      set({ sound: null });
-      if (oldSound) {
-        oldSound.stopAsync().catch(() => {});
-        oldSound.unloadAsync().catch(() => {});
-      }
-
       try {
+        await ensurePlayerReady();
+        if (myToken !== loadToken) return;
+
+        await TrackPlayer.reset();
+        if (myToken !== loadToken) return;
+
         console.log(`[playTrack #${myToken}] Resolving stream: ${track.title}`);
+        const streamData = await YTMusic.resolveStream(track.track_id);
+        if (myToken !== loadToken) return;
 
-        // Pre-fetch recommendations in parallel to pad upcoming tracks to exactly 12 if needed
-        let recsPromise = YTMusic.getRelatedTracks(track.track_id).catch(() => [] as Track[]);
+        await TrackPlayer.add({
+          id: track.track_id,
+          url: streamData.url,
+          title: track.title,
+          artist: track.artists,
+          artwork: track.thumbnail,
+          duration: track.duration,
+          headers: streamData.headers,
+        } as any);
 
-        const [streamData, recs] = await Promise.all([
-          YTMusic.resolveStream(track.track_id),
-          recsPromise
-        ]);
-
-        const streamUrl = streamData.url;
-        const headers = streamData.headers;
-
-        // Stale check — a newer skip happened while we were fetching the URL
-        if (myToken !== loadToken) {
-          console.log(`[playTrack #${myToken}] Superseded. Aborting.`);
-          return;
-        }
-
-        // Pad the queue to exactly 15 if it has fewer than 15 items
-        let currentQ = get().queue;
-        if (currentQ.length < 15 && recs && recs.length > 0) {
-          const existingIds = new Set(currentQ.map(q => q.track_id));
-          const freshRecs = recs.filter(r => !existingIds.has(r.track_id));
-          const needed = 15 - currentQ.length;
-          const pad = freshRecs.slice(0, needed);
-          const updatedQ = [...currentQ, ...pad];
-          set({ queue: updatedQ });
-        }
-
-        const { volume, isMuted } = get();
-        const { sound: newSound, status } = await Audio.Sound.createAsync(
-          { uri: streamUrl, headers },
-          {
-            shouldPlay: true,
-            volume: isMuted ? 0 : (isNativeVolumeManagerAvailable() ? 1.0 : volume),
-            progressUpdateIntervalMillis: 250,
-          },
-          onPlaybackStatusUpdate
-        );
-
-        // Stale check — a newer skip happened while Audio was loading
-        if (myToken !== loadToken) {
-          console.log(`[playTrack #${myToken}] Superseded during audio load. Unloading.`);
-          newSound.stopAsync().catch(() => {});
-          newSound.unloadAsync().catch(() => {});
-          return;
-        }
-
-        set({ sound: newSound, isPlaying: true, isBuffering: false });
+        await TrackPlayer.play();
+        set({ isPlaying: true, isBuffering: false });
         console.log(`[playTrack #${myToken}] ✓ Playing: ${track.title}`);
-        const durationSec = status && status.isLoaded ? ((status as any).durationMillis || 0) / 1000 : 0;
-        updateMediaMetadata(track, durationSec);
-        updateMediaPlaybackState(PlaybackState.PLAYING);
+
+        // Pad queue with recommendations in background
+        YTMusic.getRelatedTracks(track.track_id).then(recs => {
+          if (myToken !== loadToken) return;
+          const currentQ = get().queue;
+          if (currentQ.length < 15 && recs && recs.length > 0) {
+            const existingIds = new Set(currentQ.map(q => q.track_id));
+            const freshRecs = recs.filter(r => !existingIds.has(r.track_id));
+            const needed = 15 - currentQ.length;
+            const pad = freshRecs.slice(0, needed);
+            if (pad.length > 0) set({ queue: [...currentQ, ...pad] });
+          }
+        }).catch(() => {});
+
+        // Load next track into TrackPlayer's native queue while we have network
+        setTimeout(async () => {
+          if (myToken !== loadToken) return;
+          await loadNextIntoPlayer();
+        }, 2000);
+
       } catch (err) {
         if (myToken === loadToken) {
-          console.error(`[playTrack #${myToken}] Failed to stream:`, err);
-          set({ isBuffering: false });
+          console.error(`[playTrack #${myToken}] Failed:`, err);
+          set({ isBuffering: false, isPlaying: false });
           setTimeout(() => {
             if (myToken === loadToken) get().nextTrack();
           }, 1500);
@@ -382,42 +383,37 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       }
     },
 
+    // ─── togglePlay ───────────────────────────────────────────────────────
     togglePlay: async () => {
-      const { sound, isPlaying, currentTrack } = get();
-      if (!sound || !currentTrack) return;
-
-      const nextPlaying = !isPlaying;
-      // Optimistic update
-      set({ isPlaying: nextPlaying, isBuffering: false });
-      updateMediaPlaybackState(nextPlaying ? PlaybackState.PLAYING : PlaybackState.PAUSED);
-
-      if (nextPlaying) {
-        sound.playAsync().catch(e => console.warn("playAsync failed:", e));
+      const { isPlaying, currentTrack } = get();
+      if (!currentTrack) return;
+      if (isPlaying) {
+        set({ isPlaying: false });
+        await TrackPlayer.pause();
       } else {
-        sound.pauseAsync().catch(e => console.warn("pauseAsync failed:", e));
+        set({ isPlaying: true });
+        await TrackPlayer.play();
       }
     },
 
+    // ─── setPlaying ───────────────────────────────────────────────────────
     setPlaying: async (playing) => {
-      const { sound } = get();
-      if (!sound) return;
-      
-      // Optimistic update
-      set({ isPlaying: playing, isBuffering: playing ? get().isBuffering : false });
-      updateMediaPlaybackState(playing ? PlaybackState.PLAYING : PlaybackState.PAUSED);
-
+      const { currentTrack } = get();
+      if (!currentTrack) return;
+      set({ isPlaying: playing });
       if (playing) {
-        sound.playAsync().catch(e => console.warn("playAsync failed:", e));
+        await TrackPlayer.play();
       } else {
-        sound.pauseAsync().catch(e => console.warn("pauseAsync failed:", e));
+        await TrackPlayer.pause();
       }
     },
 
+    // ─── nextTrack ────────────────────────────────────────────────────────
     nextTrack: async () => {
-      const { queue, currentIndex, isRepeat, isShuffle, currentTrack } = get();
+      const { queue, currentIndex, isRepeat, isShuffle } = get();
       if (queue.length === 0) return;
 
-      let nextIndex = -1;
+      let nextIndex: number;
       if (isShuffle) {
         nextIndex = Math.floor(Math.random() * queue.length);
       } else {
@@ -426,38 +422,7 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
           if (isRepeat === 'all') {
             nextIndex = 0;
           } else {
-            // Endless autoplay: Load recommendations based on the last track played!
-            if (currentTrack) {
-              set({ isBuffering: true });
-              try {
-                console.log("[Endless Autoplay] Queue ended, fetching recommendations...");
-                let recs = await YTMusic.getRelatedTracks(currentTrack.track_id);
-                if (!recs || recs.length === 0) {
-                  console.log("[Endless Autoplay] Related tracks empty, using search fallback...");
-                  const cleanArtist = currentTrack.artists.replace(/^(Song|Video|Artist|Album|Single|Playlist)\s*/i, '');
-                  recs = await YTMusic.search(`${cleanArtist} radio`, 'songs');
-                }
-
-                if (recs && recs.length > 0) {
-                  // Append a full batch of unique recommendations (up to 15)
-                  // so the queue looks like a proper endless-play list
-                  const existingIds = new Set(queue.map(q => q.track_id));
-                  const freshRecs = recs.filter(r => !existingIds.has(r.track_id));
-                  const batch = (freshRecs.length > 0 ? freshRecs : recs).slice(0, 15);
-
-                  const updatedQueue = [...queue, ...batch];
-                  const nextIdx = queue.length; // first newly appended track
-                  set({ queue: updatedQueue, currentIndex: nextIdx });
-                  await get().playTrack(updatedQueue[nextIdx], updatedQueue);
-                  return;
-                }
-              } catch (err) {
-                console.warn("[Endless Autoplay] Autoplay recommendations failed:", err);
-              }
-            }
-            
-            // If no recommendations or failed, just halt
-            await unloadCurrentSound();
+            await handleQueueEnded();
             return;
           }
         }
@@ -466,23 +431,18 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       const next = queue[nextIndex];
       if (!next) return;
 
-      // Instant UI update — show next track metadata immediately
       set({ currentTrack: next, currentIndex: nextIndex, isBuffering: true, isPlaying: false, currentTime: 0, duration: 0 });
       await get().playTrack(next, queue);
     },
 
+    // ─── prevTrack ────────────────────────────────────────────────────────
     prevTrack: async () => {
-      const { queue, currentIndex, isRepeat, sound, currentTime } = get();
+      const { queue, currentIndex, isRepeat, currentTime } = get();
       if (queue.length === 0) return;
 
-      // Replay from start if more than 3 seconds in
-      if (sound && currentTime > 3) {
-        try {
-          await sound.setPositionAsync(0);
-          set({ currentTime: 0 });
-        } catch (e) {
-          console.warn("Replay track failed:", e);
-        }
+      if (currentTime > 3) {
+        await TrackPlayer.seekTo(0);
+        set({ currentTime: 0 });
         return;
       }
 
@@ -491,11 +451,8 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
         if (isRepeat === 'all') {
           prevIndex = queue.length - 1;
         } else {
-          // Restart first track
-          if (sound) {
-            await sound.setPositionAsync(0);
-            set({ currentTime: 0 });
-          }
+          await TrackPlayer.seekTo(0);
+          set({ currentTime: 0 });
           return;
         }
       }
@@ -503,132 +460,84 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
       const prev = queue[prevIndex];
       if (!prev) return;
 
-      // Instant UI update — show prev track metadata immediately
       set({ currentTrack: prev, currentIndex: prevIndex, isBuffering: true, isPlaying: false, currentTime: 0, duration: 0 });
       await get().playTrack(prev, queue);
     },
 
+    // ─── seekTo ──────────────────────────────────────────────────────────
     seekTo: async (seconds) => {
-      const { sound } = get();
-      // Lock ticks immediately and record where we expect the player to land
-      pendingSeekTime = seconds;
       set({ isScrubbing: true, currentTime: seconds });
-      if (sound) {
-        // Fire without awaiting — the status callback clears the lock once
-        // the native player reports a position within 0.5s of pendingSeekTime
-        sound.setPositionAsync(seconds * 1000).catch(e => {
-          console.warn("seekTo failed:", e);
-          pendingSeekTime = null;
-          set({ isScrubbing: false });
-        });
-      } else {
-        pendingSeekTime = null;
+      try {
+        await TrackPlayer.seekTo(seconds);
+      } catch (e) {
+        console.warn('seekTo failed:', e);
+      } finally {
         set({ isScrubbing: false });
       }
     },
 
+    // ─── setVolume ────────────────────────────────────────────────────────
     setVolume: async (value) => {
-      const { sound } = get();
       set({ volume: value, isMuted: value === 0 });
       if (isNativeVolumeManagerAvailable()) {
-        VolumeManager.setVolume(value).catch((e: any) => console.warn("setVolume failed:", e));
-      } else if (sound) {
-        sound.setVolumeAsync(value).catch(e => console.warn("setVolume failed:", e));
+        VolumeManager.setVolume(value).catch((e: any) => console.warn('setVolume failed:', e));
+      } else {
+        TrackPlayer.setVolume(value).catch(() => {});
       }
     },
 
+    // ─── toggleMute ───────────────────────────────────────────────────────
     toggleMute: async () => {
-      const { isMuted, volume, sound } = get();
+      const { isMuted, volume } = get();
       const nextMute = !isMuted;
       set({ isMuted: nextMute });
+      const targetVol = nextMute ? 0 : volume;
       if (isNativeVolumeManagerAvailable()) {
-        VolumeManager.setVolume(nextMute ? 0 : volume).catch((e: any) => console.warn("toggleMute failed:", e));
-      } else if (sound) {
-        sound.setVolumeAsync(nextMute ? 0 : volume).catch(e => console.warn("toggleMute failed:", e));
+        VolumeManager.setVolume(targetVol).catch(() => {});
+      } else {
+        TrackPlayer.setVolume(targetVol).catch(() => {});
       }
     },
 
+    // ─── Queue Management ─────────────────────────────────────────────────
     addToQueue: (track) => {
       const { queue, currentIndex } = get();
-      if (queue.some((t) => t.track_id === track.track_id)) return;
-      let newQueue = [...queue];
-
-      // Add to the end of the queue
-      newQueue.push(track);
+      if (queue.some(t => t.track_id === track.track_id)) return;
+      let newQueue = [...queue, track];
       let newIndex = currentIndex;
-      if (newQueue.length > 15) {
-        newQueue.shift();
-        if (newIndex > 0) newIndex--;
-      }
+      if (newQueue.length > 15) { newQueue.shift(); if (newIndex > 0) newIndex--; }
       set({ queue: newQueue, currentIndex: newIndex });
     },
 
     playNext: (track) => {
       const { queue, currentIndex } = get();
-      // Remove track if it already exists to move it to playNext
-      let newQueue = queue.filter((t) => t.track_id !== track.track_id);
-      
+      let newQueue = queue.filter(t => t.track_id !== track.track_id);
       const currentTrack = queue[currentIndex];
       let newIndex = currentTrack ? newQueue.findIndex(t => t.track_id === currentTrack.track_id) : currentIndex;
       if (newIndex === -1) newIndex = currentIndex;
-
       const insertIdx = newIndex !== -1 ? newIndex + 1 : 0;
       newQueue.splice(insertIdx, 0, track);
-
-      if (newQueue.length > 15) {
-        newQueue.pop();
-      }
+      if (newQueue.length > 15) newQueue.pop();
       set({ queue: newQueue, currentIndex: newIndex });
     },
 
     removeFromQueue: async (trackId) => {
-      const { queue, currentIndex, currentTrack } = get();
+      const { queue, currentIndex } = get();
       const targetIdx = queue.findIndex(t => t.track_id === trackId);
       if (targetIdx === -1) return;
-
       let newQueue = queue.filter(t => t.track_id !== trackId);
       let newIndex = currentIndex;
 
       if (targetIdx === currentIndex) {
         if (newQueue.length > 0) {
           if (newIndex >= newQueue.length) newIndex = 0;
-          const next = newQueue[newIndex];
-          await get().playTrack(next, newQueue);
+          await get().playTrack(newQueue[newIndex], newQueue);
         } else {
           set({ queue: [], currentIndex: -1, currentTrack: null });
-          await unloadCurrentSound();
+          await TrackPlayer.reset();
         }
       } else {
         if (targetIdx < currentIndex) newIndex -= 1;
-
-        // If queue is smaller than 15, try to pad from recommendations
-        if (newQueue.length < 15 && currentTrack) {
-          try {
-            const recs = await YTMusic.getRelatedTracks(currentTrack.track_id);
-            const existingIds = new Set(newQueue.map(q => q.track_id));
-            const freshRecs = recs.filter(r => !existingIds.has(r.track_id));
-            const needed = 15 - newQueue.length;
-            newQueue = [...newQueue, ...freshRecs.slice(0, needed)];
-          } catch (_) {}
-        }
-
-        // Keep active track at exactly index 2 (3rd position)
-        if (newIndex < 2 && currentTrack) {
-          const preceding: Track[] = [...newQueue.slice(0, newIndex)];
-          const historyCopy = [...sessionHistory].reverse();
-          for (const histTrack of historyCopy) {
-            if (preceding.length >= 2) break;
-            if (histTrack.track_id !== currentTrack.track_id && !newQueue.some(q => q.track_id === histTrack.track_id)) {
-              preceding.unshift(histTrack);
-            }
-          }
-          while (preceding.length < 2) {
-            preceding.unshift(currentTrack);
-          }
-          newQueue = [...preceding, ...newQueue.slice(newIndex)];
-          newIndex = 2;
-        }
-
         set({ queue: newQueue, currentIndex: newIndex });
       }
     },
@@ -638,8 +547,8 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
     },
 
     clearQueue: async () => {
-      set({ queue: [], currentIndex: -1, currentTrack: null });
-      await unloadCurrentSound();
+      set({ queue: [], currentIndex: -1, currentTrack: null, isPlaying: false, isBuffering: false, currentTime: 0, duration: 0 });
+      await TrackPlayer.reset();
     },
 
     setQueue: async (tracks, startIndex = 0) => {
@@ -648,16 +557,24 @@ export const usePlaybackStore = create<PlaybackState>((set, get) => {
         await get().playTrack(track, tracks);
       } else {
         set({ queue: [], currentIndex: -1, currentTrack: null });
-        await unloadCurrentSound();
+        await TrackPlayer.reset();
       }
     },
 
+    // ─── Repeat / Shuffle ─────────────────────────────────────────────────
     toggleRepeat: () => {
       const { isRepeat } = get();
       const cycle: Record<'none' | 'all' | 'one', 'none' | 'all' | 'one'> = { none: 'all', all: 'one', one: 'none' };
-      set({ isRepeat: cycle[isRepeat] });
+      const next = cycle[isRepeat];
+      set({ isRepeat: next });
+      const modeMap: Record<string, number> = {
+        none: RepeatMode.Off,
+        all: RepeatMode.Queue,
+        one: RepeatMode.Track,
+      };
+      TrackPlayer.setRepeatMode(modeMap[next]).catch(() => {});
     },
 
-    toggleShuffle: () => set((state) => ({ isShuffle: !state.isShuffle })),
+    toggleShuffle: () => set(state => ({ isShuffle: !state.isShuffle })),
   };
 });

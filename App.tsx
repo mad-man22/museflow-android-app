@@ -1,16 +1,18 @@
 import './polyfills';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, SafeAreaView, TouchableOpacity, Text, StatusBar, Platform, Animated, Image } from 'react-native';
+import { StyleSheet, View, SafeAreaView, TouchableOpacity, Text, StatusBar, Platform, Animated, Image, PermissionsAndroid } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, Search, Library, Settings } from 'lucide-react-native';
+import { Home, Search, Library, Settings, Radio } from 'lucide-react-native';
 import HomeScreen from './screens/HomeScreen';
 import SearchScreen from './screens/SearchScreen';
 import LibraryScreen from './screens/LibraryScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import JamScreen from './screens/JamScreen';
 import PersistentPlayer from './components/PersistentPlayer';
-import { usePlaybackStore } from './store/usePlaybackStore';
+import { usePlaybackStore, ensurePlayerReady } from './store/usePlaybackStore';
 
-type ScreenType = 'home' | 'search' | 'library' | 'settings';
+
+type ScreenType = 'home' | 'search' | 'library' | 'jam' | 'settings';
 
 export default function App() {
   return (
@@ -33,6 +35,25 @@ function AppContent() {
   const splashOpacity = useRef(new Animated.Value(1)).current;
   const splashScale = useRef(new Animated.Value(1)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Request notification permission on Android 13+ (required for foreground service)
+  useEffect(() => {
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
+        {
+          title: 'Allow Notifications',
+          message: 'MuseFlow needs notification access to show playback controls on your lock screen and notification shade.',
+          buttonPositive: 'Allow',
+          buttonNegative: 'Deny',
+        }
+      ).then(result => {
+        console.log('[Permissions] POST_NOTIFICATIONS:', result);
+      }).catch(() => {});
+    }
+    // Ensure TrackPlayer native player is set up
+    ensurePlayerReady().catch(e => console.warn('[App] TrackPlayer setup failed:', e));
+  }, []);
 
   useEffect(() => {
     // 1. Entrance animation (Logo springs in and grows)
@@ -100,66 +121,7 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Listen for native media control events (earphone clicks, lock screen commands)
-  useEffect(() => {
-    let removeMediaListener: (() => void) | undefined;
 
-    const setupMediaControls = async () => {
-      const store = require('./store/usePlaybackStore');
-      if (store.isMediaControlAvailable && store.MediaControl) {
-        await store.initMediaControls();
-        const remove = store.MediaControl.addListener((event: any) => {
-          console.log('[MediaControl Event]:', event.command);
-          const state = usePlaybackStore.getState();
-          switch (event.command) {
-            case store.Command.PLAY:
-              state.setPlaying(true);
-              break;
-            case store.Command.PAUSE:
-              state.setPlaying(false);
-              break;
-            case store.Command.NEXT_TRACK:
-              state.nextTrack();
-              break;
-            case store.Command.PREVIOUS_TRACK:
-              state.prevTrack();
-              break;
-            case store.Command.STOP:
-              state.setPlaying(false);
-              break;
-          }
-        });
-        removeMediaListener = remove;
-      }
-    };
-
-    setupMediaControls();
-
-    return () => {
-      if (removeMediaListener) {
-        removeMediaListener();
-      }
-      const store = require('./store/usePlaybackStore');
-      if (store.isMediaControlAvailable && store.MediaControl) {
-        store.MediaControl.disableMediaControls();
-      }
-    };
-  }, []);
-
-  const renderScreen = () => {
-    switch (currentScreen) {
-      case 'home':
-        return <HomeScreen />;
-      case 'search':
-        return <SearchScreen />;
-      case 'library':
-        return <LibraryScreen />;
-      case 'settings':
-        return <SettingsScreen />;
-      default:
-        return <HomeScreen />;
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -167,11 +129,22 @@ function AppContent() {
       
       {/* Active Screen Content */}
       <View style={styles.contentContainer}>
-        {renderScreen()}
+        <View style={{ flex: 1, display: currentScreen === 'home' ? 'flex' : 'none' }}>
+          <HomeScreen />
+        </View>
+        <View style={{ flex: 1, display: currentScreen === 'search' ? 'flex' : 'none' }}>
+          <SearchScreen />
+        </View>
+        <View style={{ flex: 1, display: currentScreen === 'library' ? 'flex' : 'none' }}>
+          <LibraryScreen />
+        </View>
+        <View style={{ flex: 1, display: currentScreen === 'jam' ? 'flex' : 'none' }}>
+          <JamScreen />
+        </View>
+        <View style={{ flex: 1, display: currentScreen === 'settings' ? 'flex' : 'none' }}>
+          <SettingsScreen />
+        </View>
       </View>
-
-      {/* Floating Persistent Media Player */}
-      <PersistentPlayer />
 
       {/* Custom Bottom Tab Navigator */}
       <View style={[styles.tabBar, { height: 65 + insets.bottom, paddingBottom: insets.bottom }]}>
@@ -201,12 +174,23 @@ function AppContent() {
 
         <TouchableOpacity 
           style={styles.tabItem} 
+          onPress={() => setCurrentScreen('jam')}
+        >
+          <Radio size={22} color={currentScreen === 'jam' ? '#a855f7' : '#a1a1aa'} />
+          <Text style={[styles.tabLabel, currentScreen === 'jam' && styles.activeTabLabel]}>Jam</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.tabItem} 
           onPress={() => setCurrentScreen('settings')}
         >
           <Settings size={22} color={currentScreen === 'settings' ? '#a855f7' : '#a1a1aa'} />
           <Text style={[styles.tabLabel, currentScreen === 'settings' && styles.activeTabLabel]}>Settings</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Floating Persistent Media Player — rendered LAST so it sits on top of the tab bar */}
+      <PersistentPlayer />
 
       {/* Custom Animated Splash Screen Overlay */}
       {showSplash && (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, Image, TextInput, TouchableOpacity, ScrollView, FlatList, ActivityIndicator, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Play, Sparkles, Flame, RefreshCw, Plus, Layers } from 'lucide-react-native';
+import { Play, Sparkles, Flame, RefreshCw, Plus, Layers, Music, Heart } from 'lucide-react-native';
 import { usePlaybackStore } from '../store/usePlaybackStore';
 import { YTMusic, Track } from '../services/ytmusic';
 import { GeminiService } from '../services/gemini';
@@ -30,20 +30,78 @@ export default function HomeScreen() {
   const [aiTracks, setAiTracks] = useState<Track[]>([]);
   const [aiVibeName, setAiVibeName] = useState("");
 
+  // Preferences states
+  const [prefLanguages, setPrefLanguages] = useState<string[]>([]);
+  const [prefArtists, setPrefArtists] = useState<string[]>([]);
+  const [langFeeds, setLangFeeds] = useState<Record<string, Track[]>>({});
+  const [artistFeeds, setArtistFeeds] = useState<Record<string, Track[]>>({});
+  const [loadingFeeds, setLoadingFeeds] = useState(false);
+
   const playTrack = usePlaybackStore((s) => s.playTrack);
   const setQueue = usePlaybackStore((s) => s.setQueue);
   const currentTrack = usePlaybackStore((s) => s.currentTrack);
 
-  // Load recently played and charts on mount/song transition
+  // Load recently played, charts, and preference feeds on mount/song transition
   useEffect(() => {
     loadRecentlyPlayed();
     loadTrendingCharts();
+    loadPreferencesAndFeeds();
   }, [currentTrack]);
 
   // Fetch recommendations based on recently played or trending seed
   useEffect(() => {
     fetchRecommendations();
   }, [recentlyPlayed, trending]);
+
+  const loadPreferencesAndFeeds = async () => {
+    setLoadingFeeds(true);
+    try {
+      const stored = await AsyncStorage.getItem('museflow_home_preferences');
+      let langs = ['Kannada', 'English'];
+      let artists = ['Puneeth Rajkumar', 'Taylor Swift'];
+
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.languages && parsed.languages.length > 0) langs = parsed.languages;
+        if (parsed.artists && parsed.artists.length > 0) artists = parsed.artists;
+      }
+
+      setPrefLanguages(langs);
+      setPrefArtists(artists);
+
+      const tempLangFeeds: Record<string, Track[]> = {};
+      const tempArtistFeeds: Record<string, Track[]> = {};
+
+      const langPromises = langs.map(async (lang) => {
+        try {
+          const query = `${lang} trending songs`;
+          const results = await YTMusic.search(query, "songs");
+          tempLangFeeds[lang] = results.slice(0, 6);
+        } catch (e) {
+          console.warn(`Failed to fetch trending for language ${lang}:`, e);
+        }
+      });
+
+      const artistPromises = artists.map(async (art) => {
+        try {
+          const query = `${art} songs`;
+          const results = await YTMusic.search(query, "songs");
+          tempArtistFeeds[art] = results.slice(0, 6);
+        } catch (e) {
+          console.warn(`Failed to fetch songs for artist ${art}:`, e);
+        }
+      });
+
+      await Promise.all([...langPromises, ...artistPromises]);
+
+      setLangFeeds(tempLangFeeds);
+      setArtistFeeds(tempArtistFeeds);
+    } catch (err) {
+      console.warn("Failed to load home preferences and feeds:", err);
+    } finally {
+      setLoadingFeeds(false);
+    }
+  };
 
   const loadRecentlyPlayed = async () => {
     try {
@@ -252,6 +310,78 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
+
+      {/* Dynamic Preferences Loading Indicator */}
+      {loadingFeeds && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#a855f7" />
+          <Text style={styles.loadingText}>Personalizing your feeds...</Text>
+        </View>
+      )}
+
+      {/* Dynamic Language Trending Sections */}
+      {!loadingFeeds && prefLanguages.map((lang) => {
+        const tracks = langFeeds[lang] || [];
+        if (tracks.length === 0) return null;
+        return (
+          <View key={lang} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Flame size={18} color="#f97316" style={{ marginRight: 8 }} />
+              <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.sectionTitle}>{lang} Trending</Text>
+                <TouchableOpacity onPress={() => setQueue(tracks, 0)}>
+                  <Text style={styles.seeAllLink}>Play Mix</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+              {tracks.map((track, idx) => (
+                <TouchableOpacity 
+                  key={track.track_id + idx} 
+                  style={styles.langRecommendCard}
+                  onPress={() => playTrack(track, tracks)}
+                >
+                  <Image source={{ uri: track.thumbnail }} style={styles.langRecommendImage} />
+                  <Text style={styles.recommendTitle} numberOfLines={1}>{track.title}</Text>
+                  <Text style={styles.recommendSubtitle} numberOfLines={1}>{cleanDisplayArtist(track.artists)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        );
+      })}
+
+      {/* Dynamic Artist Feeds Sections */}
+      {!loadingFeeds && prefArtists.map((artistName) => {
+        const tracks = artistFeeds[artistName] || [];
+        if (tracks.length === 0) return null;
+        return (
+          <View key={artistName} style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Music size={18} color="#a855f7" style={{ marginRight: 8 }} />
+              <View style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.sectionTitle}>Hits: {artistName}</Text>
+                <TouchableOpacity onPress={() => setQueue(tracks, 0)}>
+                  <Text style={styles.seeAllLink}>Play Artist</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+              {tracks.map((track, idx) => (
+                <TouchableOpacity 
+                  key={track.track_id + idx} 
+                  style={styles.langRecommendCard}
+                  onPress={() => playTrack(track, tracks)}
+                >
+                  <Image source={{ uri: track.thumbnail }} style={styles.langRecommendImage} />
+                  <Text style={styles.recommendTitle} numberOfLines={1}>{track.title}</Text>
+                  <Text style={styles.recommendSubtitle} numberOfLines={1}>{cleanDisplayArtist(track.artists)}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        );
+      })}
 
       {/* Recommended Grid */}
       {recommendations.length > 0 && (
@@ -585,5 +715,33 @@ const styles = StyleSheet.create({
     color: '#71717a',
     fontSize: 11,
     marginTop: 2,
+  },
+  langRecommendCard: {
+    width: 140,
+    marginRight: 14,
+  },
+  langRecommendImage: {
+    width: 140,
+    height: 140,
+    borderRadius: 16,
+    backgroundColor: '#27272a',
+    marginBottom: 8,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 15,
+    backgroundColor: '#18181b50',
+    paddingVertical: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#27272a30',
+  },
+  loadingText: {
+    color: '#a1a1aa',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 8,
   },
 });

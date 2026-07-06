@@ -81,3 +81,13 @@ if (typeof global.navigator === 'undefined') {
     onLine: true,
   };
 }
+
+// WebRTC Polyfills for PeerJS and data channels
+try {
+  const webrtc = require('react-native-webrtc');
+  if (webrtc && typeof webrtc.registerGlobals === 'function') {
+    webrtc.registerGlobals();
+  }
+} catch (e) {
+  console.warn('[Polyfills] WebRTC globals registration skipped (Expo Go fallback)');
+}

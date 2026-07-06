@@ -274,26 +274,34 @@ export default function PersistentPlayer() {
       
       {/* ─── MINI PLAYER (DOCKED BAR) ─── */}
       {!isExpanded && (
-        <TouchableOpacity style={styles.miniPlayer} activeOpacity={0.9} onPress={() => setIsExpanded(true)}>
-          <Image source={{ uri: currentTrack.thumbnail }} style={styles.miniImage as any} />
-          
-          <View style={styles.miniDetails}>
-            <Text style={styles.miniTitle} numberOfLines={1}>{currentTrack.title}</Text>
-            <Text style={styles.miniSubtitle} numberOfLines={1}>{cleanDisplayArtist(currentTrack.artists)}</Text>
-          </View>
-
-          {isBuffering && !isPlaying ? (
-            <ActivityIndicator size="small" color="#a855f7" style={styles.miniActionBtn} />
-          ) : (
-            <TouchableOpacity style={styles.miniActionBtn} onPress={togglePlay}>
-              {isPlaying ? <Pause size={20} color="#ffffff" /> : <Play size={20} color="#ffffff" style={{ marginLeft: 2 }} />}
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.miniActionBtn} onPress={nextTrack}>
-            <SkipForward size={20} color="#ffffff" />
+        <View style={styles.miniPlayer}>
+          <TouchableOpacity 
+            activeOpacity={0.8} 
+            onPress={() => setIsExpanded(true)} 
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+          >
+            <Image source={{ uri: currentTrack.thumbnail }} style={styles.miniImage as any} />
+            
+            <View style={styles.miniDetails}>
+              <Text style={styles.miniTitle} numberOfLines={1}>{currentTrack.title}</Text>
+              <Text style={styles.miniSubtitle} numberOfLines={1}>{cleanDisplayArtist(currentTrack.artists)}</Text>
+            </View>
           </TouchableOpacity>
-        </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {isBuffering && !isPlaying ? (
+              <ActivityIndicator size="small" color="#a855f7" style={styles.miniActionBtn} />
+            ) : (
+              <TouchableOpacity style={styles.miniActionBtn} onPress={togglePlay}>
+                {isPlaying ? <Pause size={20} color="#ffffff" /> : <Play size={20} color="#ffffff" style={{ marginLeft: 2 }} />}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.miniActionBtn} onPress={nextTrack}>
+              <SkipForward size={20} color="#ffffff" />
+            </TouchableOpacity>
+          </View>
+        </View>
       )}
 
       {/* ─── FULLSCREEN EXPANDED PLAYER ─── */}
